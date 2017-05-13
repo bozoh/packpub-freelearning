@@ -128,7 +128,7 @@ class Packtpub(object):
             smtpObj.starttls()
             smtpObj.login(smtp_config.username, smtp_config.password)
 
-        smtpObj.sendmail(sender, to, msg.as_string())
+        smtpObj.sendmail(msg['From'], to, msg.as_string())
         logging.info("Successfully sent email")
         smtpObj.quit()
 
@@ -153,6 +153,8 @@ class Packtpub(object):
         else:
             self.today_book = "The book: "+self.today_book+" is not in your books"
             logging.warn(self.today_book)
+	
+	browser.quit()
 
 
 if __name__ == "__main__":
@@ -167,7 +169,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s %(name)s %(levelname)s: %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
-    #try:
+    
+    #Hotmail/Outlook example
     mail_config = MailServerConfig(server='smtp.live.com', port=587)
     mail_config.TLS = True
     mail_config.username="<YOUR account>"
@@ -182,18 +185,3 @@ if __name__ == "__main__":
     packt.send_mail(to='carlosalexandre@outlook.com',
                     smtp_config=mail_config)
 
-    # except Exception, e:
-    #     logging.fatal("Fatal Erro:"+ e.message + dir(e))
-
-
-
-
-
-
-# print "pgpoolf2:"
-# for s in server_lst:
-#   [staus, connect_status] = get_connection_status(s,f1_status_data)
-#   print s+"\t"+staus+"\t"+connect_status
-
-
-# print browser.page_source
