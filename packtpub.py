@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 #-*- coding: utf-8 -*-
+#pip install PalmDB-1.8.1
 
-import re, os, time, sys
-import logging, smtplib, argparse
+import re, os, time, sys, traceback, time
+import logging, smtplib, argparse, sqlite3
+from kiehinen.ebook import Book
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -43,8 +45,17 @@ class Packtpub(object):
 
     def get_web_drive(self):
         if self.wd is None:
-            self.wd = webdriver.PhantomJS(executable_path=self.path,
-                                          desired_capabilities=self.brw_caps)
+            folder = os.getcwd()
+            options = webdriver.ChromeOptions()
+            options.add_experimental_option("prefs", {
+                "download.default_directory": r""+folder+"/livros",
+                "download.prompt_for_download": False,
+                "download.directory_upgrade": True,
+                "safebrowsing.enabled": True
+            })
+            self.wd = webdriver.Chrome(chrome_options=options)
+            #self.wd = webdriver.PhantomJS(executable_path=self.path,
+            #                            desired_capabilities=self.brw_caps)
             self.wd.set_window_size(1400,342)
         return self.wd
 
@@ -96,15 +107,47 @@ class Packtpub(object):
             EC.presence_of_element_located((By.ID, 'product-account-list')))
 
 
-    def verify_if_get(self):
+    def get_my_ebooks(self):
         browser = self.get_web_drive()
+        #format="mobi"
+        format = "mobi"
+        conn = sqlite3.connect('livros.db')
+        cursor = conn.cursor()
         for div in browser.find_elements_by_class_name("product-line"):
-            eb_title = div.get_attribute("title")
-            logging.info(eb_title)
-            if eb_title == self.today_book + " [eBook]":
-                logging.info(eb_title + " - FOUND!!!")
-                return True
-        return False
+            try:
+                eb_title = div.get_attribute("title")
+                eb_id = div.get_attribute("nid")
+                if eb_id:
+                    cursor.execute(" SELECT * FROM livros where nid = ? and formato = ?", [eb_id, format])
+                    livro = cursor.fetchall()
+                    if not livro:
+                        logging.info("Downloading: "+eb_id+" --- "+eb_title)
+                        browser.get("https://www.packtpub.com/ebook_download/"+str(eb_id)+"/"+format)
+                        cursor.execute(" INSERT INTO livros (nid, nome, formato) VALUES (?,?,?) ",  [eb_id, eb_title, format])
+                        conn.commit()
+            except Exception, e:
+                logging.error("Um erro foi encontrado: \n" + traceback.format_exc())
+        conn.close()
+
+    def fetch_titles(self):
+        conn = sqlite3.connect('livros.db')
+        cursor = conn.cursor()
+        folder = os.getcwd() + "/livros"
+        lista=[]
+        for file in os.listdir(folder):
+            if file.endswith(".mobi"):
+                [name, ext] = file.split(".")
+                b = Book(folder+"/"+file)
+                likename = b.title.replace(" ","%").replace("-","%") + "%[eBook]%"
+                cursor.execute('''SELECT nid FROM livros where formato=? and nome like ?''', ('mobi', likename))
+                nid = cursor.fetchone()
+                if nid:
+                    print(b.title, name, str(nid[0]))
+                    cursor.execute('''UPDATE livros SET nome = ?, filename=? WHERE nid=?''', (b.title, name, str(nid[0])))
+                    conn.commit()
+        conn.close()
+
+
 
     def get_today_book_title(self):
         browser = self.get_web_drive()
@@ -113,31 +156,13 @@ class Packtpub(object):
         div_title = browser.find_element_by_class_name('dotd-title')
         self.today_book = div_title.text
 
-    def send_mail(self,to,smtp_config):
-        import email
-        msg = email.message_from_string(self.today_book)
-        msg['From'] = "packtpub@dev-moodle.ml"
-        msg['To'] = to
-        msg['Subject'] = "New Book"
-
-        smtpObj = smtplib.SMTP(smtp_config.server)
-        smtpObj.port=smtp_config.port
-        smtpObj.ehlo()
-
-        if smtp_config.TLS:
-            smtpObj.starttls()
-            smtpObj.login(smtp_config.username, smtp_config.password)
-
-        smtpObj.sendmail(msg['From'], to, msg.as_string())
-        logging.info("Successfully sent email")
-        smtpObj.quit()
-
     def run(self):
         browser = self.get_web_drive()
         browser.get(self.server)
         self.get_today_book_title()
         logging.info("Book of the day is: "+self.today_book)
-        claim_url = self.get_claim_url()
+        claim_url = "https://www.packtpub.com/account/my-ebooks"
+        # self.get_claim_url()
         logging.info(claim_url)
         browser.get(claim_url)
         logging.info("Do login")
@@ -146,15 +171,11 @@ class Packtpub(object):
         logging.info("Trying to get the book")
         self.get_ebook(claim_url)
         logging.info("Verifying if the book is on 'My Books'")
-
-        if self.verify_if_get():
-            self.today_book = "The book: "+self.today_book+" is in 'My Books' now"
-            logging.info(self.today_book)
-        else:
-            self.today_book = "The book: "+self.today_book+" is not in your books"
-            logging.warn(self.today_book)
-	
-	browser.quit()
+        self.get_my_ebooks()
+        self.fetch_titles()
+        #Para dar tempo dos downloads acabarem
+        time.sleep(5*60)
+        browser.quit()
 
 
 if __name__ == "__main__":
@@ -162,14 +183,14 @@ if __name__ == "__main__":
 
 
     parser = argparse.ArgumentParser(description="Packtpub free book catcher")
-    parser.add_argument('-e', '--email', default='')
-    parser.add_argument('-p', '--password', default='')
+    parser.add_argument('-e', '--email')
+    parser.add_argument('-p', '--password')
     parser.add_argument('-P', '--phantom-path', default=PATH)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s %(name)s %(levelname)s: %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
-    
+
     #Hotmail/Outlook example
     mail_config = MailServerConfig(server='smtp.live.com', port=587)
     mail_config.TLS = True
@@ -182,6 +203,5 @@ if __name__ == "__main__":
                      server="https://www.packtpub.com/packt/offers/free-learning",
                      phantomjs_path=args.phantom_path)
     packt.run()
-    packt.send_mail(to='carlosalexandre@outlook.com',
-                    smtp_config=mail_config)
-
+    # packt.send_mail(to='carlosalexandre@outlook.com',
+    #                 smtp_config=mail_config)
