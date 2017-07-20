@@ -166,11 +166,13 @@ class Packtpub(object):
         conn.close()
 
     def __add_to_catalog(self, id, filename, connection):
-        b = Book(os.path.join(self.books_path, filename))
-        fname, _ = filename.split('.')
+        file_path = os.path.join(self.books_path, filename)
+        #This line is give a strage mensage ERROR:  <> != <>
+        b = Book(str(file_path))
+        fname = filename.split('.')
         cursor = connection.cursor()
         cursor.execute(" INSERT INTO livros (nid, nome, formato, filename) VALUES (?,?,?,?) ",
-            [id, b.title, self.formato, fname])
+            [id, b.title, self.formato, fname[0]])
         connection.commit()
         logging.info(filename+" was added in catalog")
 
@@ -200,9 +202,10 @@ class Packtpub(object):
     def __get_filename(self, response):
         filename = None
         if response.history:
-            filename = re.search('.+/(.+\.mobi)\?.+',response.url).group(1)
+            filename = re.search('.+/(.+\.'+self.formato+')\?.+',
+                response.url).group(1)
         else:
-            filename = re.search('.*filename\=\"(.+\.mobi)',
+            filename = re.search('.*filename\=\"(.+\.'+self.formato+')',
                 response.headers['Content-disposition']).group(1)
 
         return filename
