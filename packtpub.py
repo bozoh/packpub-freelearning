@@ -4,7 +4,9 @@
 
 import re, os, time, sys, traceback, time
 import logging, smtplib, argparse, sqlite3
-import requests, shutil, tempfile
+import requests
+import shutil
+import tempfile
 from kiehinen.ebook import Book
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -129,6 +131,7 @@ class Packtpub(object):
             username_field.send_keys(self.username)
             password_field.send_keys(self.password)
             login_btn.click()
+            #browser.save_screenshot("teste02.png")
 
     def get_ebook(self, claim_url):
         # browser.find_element_by_xpath("//input[@value='Summary']").click()
@@ -160,7 +163,7 @@ class Packtpub(object):
                         else:
                             logging.info("Not found in this format: "+self.formato)
 
-            except Exception, e:
+            except Exception:
                 logging.error("Um erro foi encontrado: \n" + traceback.format_exc())
         browser.quit()
         conn.close()
@@ -183,7 +186,7 @@ class Packtpub(object):
         #browser.get("https://www.packtpub.com/ebook_download/"+str(eb_id)+"/"+format)
         if r.status_code == requests.codes.ok:
             file_size = int(r.headers['Content-Length'])
-            if file_size <> 0:
+            if file_size != 0:
                 filename = self.__get_filename(r)
                 logging.info("Download: "+filename)
                 self.__save_file(response=r, filename=filename)
@@ -220,10 +223,6 @@ class Packtpub(object):
                 [name, ext] = file.split(".")
                 b = Book(folder+"/"+file)
                 likename = b.title.replace(" ","%").replace("-","%").replace("'","%") + "%[eBook]%"
-		logging.info("---")
-		logging.info("Filename: "+file)
-		logging.info("e-Book title: "+b.title)
-		logging.info("SQL: SELECT nid FROM livros where formato='mobi' and nome like '"+likename+"';")
                 cursor.execute('''SELECT nid FROM livros where formato=? and nome like ?''', ('mobi', likename))
                 nid = cursor.fetchone()
                 if nid:
@@ -250,9 +249,14 @@ class Packtpub(object):
         browser.get(claim_url)
         logging.info("Do login")
         self.do_login()
+        #browser.save_screenshot("teste01.png")
         logging.info("Logged in")
+        #browser.save_screenshot("teste02.png")
         logging.info("Trying to get the books")
+        browser.get(claim_url)
+        #browser.save_screenshot("teste03.png")
         self.get_ebook(claim_url)
+        #browser.save_screenshot("teste04.png")
         self.get_my_ebooks()
         ##Para dar tempo dos downloads acabarem
         ## Só deve ser usado quando tem arquivos na pasta ainda não salvos no DB
